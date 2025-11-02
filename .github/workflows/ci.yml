@@ -26,7 +26,7 @@ jobs:
           echo "Task4 contents:"
           ls -la Task4/ || echo "Task4 not found"
           echo "Django-Ecommerce contents:"
-          ls -la Task4/Django-Ecommercee/ || echo "Django-Ecommerce not found"
+          ls -la Task4/Django-Ecommerce/ || echo "Django-Ecommerce not found"
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -35,7 +35,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          cd Task4/Django-Ecommercee
+          cd Task4/Django-Ecommerce
           echo "Current location: $(pwd)"
           echo "Files here:"
           ls -la 
@@ -44,7 +44,7 @@ jobs:
       
       - name: Build application
         run: |
-          cd Task4/Django-Ecommercee
+          cd Task4/Django-Ecommerce
           python manage.py collectstatic --noinput --clear || echo "No static files to collect"
 
   test:
@@ -61,14 +61,14 @@ jobs:
       
       - name: Install dependencies
         run: |
-          cd Task4/Django-Ecommercee
+          cd Task4/Django-Ecommerce
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-django
       
       - name: Run unit tests
         run: |
-          cd Task4/Django-Ecommercee
+          cd Task4/Django-Ecommerce
           
           if [ -d "tests" ] || find . -name "test_*.py" -o -name "*_test.py" | grep -q .; then
             pytest -v
@@ -90,7 +90,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          cd Task4/Django-Ecommercee          
+          cd Task4/Django-Ecommerce          
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
@@ -100,13 +100,13 @@ jobs:
       
       - name: Run Bandit (SAST)
         run: |
-          cd Task4/Django-Ecommercee
+          cd Task4/Django-Ecommerce
           bandit -r . -f json -o bandit-report.json || true
           bandit -r . || true
       
       - name: Run Safety check
         run: |
-          cd Task4/Django-Ecommercee
+          cd Task4/Django-Ecommerce
           safety check --json || true
           safety check || echo "Some vulnerabilities found but continuing..."
 
@@ -125,7 +125,7 @@ jobs:
       - name: Build Docker image
         id: build
         run: |
-          cd Task4/Django-Ecommercee
+          cd Task4/Django-Ecommerce
           docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
           echo "digest=$(docker images --digests ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} --format '{{.Digest}}')" >> $GITHUB_OUTPUT
       
