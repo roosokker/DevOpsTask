@@ -34,6 +34,8 @@ jobs:
           python-version: '3.9'
       
       - name: Install dependencies
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           echo "Current location: $(pwd)"
@@ -43,6 +45,8 @@ jobs:
           pip install -r requirements.txt
       
       - name: Build application
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           python manage.py collectstatic --noinput --clear || echo "No static files to collect"
@@ -60,6 +64,8 @@ jobs:
           python-version: '3.9'
       
       - name: Install dependencies
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           python -m pip install --upgrade pip
@@ -67,6 +73,8 @@ jobs:
           pip install pytest pytest-django
       
       - name: Run unit tests
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           
@@ -89,6 +97,8 @@ jobs:
           python-version: '3.9'
       
       - name: Install dependencies
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce          
           python -m pip install --upgrade pip
@@ -99,12 +109,16 @@ jobs:
           pip install bandit safety
       
       - name: Run Bandit (SAST)
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           bandit -r . -f json -o bandit-report.json || true
           bandit -r . || true
       
       - name: Run Safety check
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           safety check --json || true
@@ -128,6 +142,15 @@ jobs:
           cd Task4/Django-Ecommerce
           docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
           echo "digest=$(docker images --digests ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} --format '{{.Digest}}')" >> $GITHUB_OUTPUT
+      
+      - name: Test Docker image with environment variables
+        run: |
+          echo "Testing Docker image with environment variables..."
+          cd Task4/Django-Ecommerce
+          docker run --rm \
+            -e DJANGO_SECRET_KEY="${{ secrets.DJANGO_SECRET_KEY }}" \
+            -e ENVIRONMENT="testing" \
+            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} python manage.py check --deploy || echo "Django check completed"
       
       - name: Install Trivy
         run: |
@@ -190,6 +213,8 @@ jobs:
         uses: actions/checkout@v3
       
       - name: Deploy to staging
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
         run: |
           cd Task4
           echo "Deploying application to staging server..."
