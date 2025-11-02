@@ -1,0 +1,148 @@
+stages:
+  - build
+  - test
+  - security-scan
+  - docker
+  - deploy
+
+variables:
+  IMAGE_NAME: "my-ecommerce-app"
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  PROJECT_DIR: "Task4/Django-Ecommerce"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+# Build stage
+build:
+  stage: build
+  image: python:3.9-slim
+  before_script:
+    - cd $PROJECT_DIR
+    - python -m pip install --upgrade pip
+  script:
+    - pip install -r requirements.txt
+    - python manage.py collectstatic --noinput --clear || echo "No static files to collect"
+  artifacts:
+    paths:
+      - $PROJECT_DIR/staticfiles/
+    expire_in: 1 hour
+  only:
+    - main
+    - merge_requests
+
+# Test stage
+test:
+  stage: test
+  image: python:3.9-slim
+  before_script:
+    - cd $PROJECT_DIR
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pip install pytest pytest-django
+  script:
+    - |
+      if [ -d "tests" ] || find . -name "test_*.py" -o -name "*_test.py" | grep -q .; then
+        pytest -v
+      else
+        echo "No tests found, skipping test execution"
+      fi
+  only:
+    - main
+    - merge_requests
+
+# Application security scan
+security-scan:
+  stage: security-scan
+  image: python:3.9-slim
+  before_script:
+    - cd $PROJECT_DIR
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pip install bandit safety
+  script:
+    - echo "Running security scans..."
+    - bandit -r . -f json -o bandit-report.json || true
+    - bandit -r . || true
+    - safety check --json || true
+    - safety check || echo "Some vulnerabilities found but continuing..."
+  artifacts:
+    reports:
+      sast: $PROJECT_DIR/bandit-report.json
+    paths:
+      - $PROJECT_DIR/bandit-report.json
+    expire_in: 1 week
+  only:
+    - main
+    - merge_requests
+
+# Docker build and scan
+docker-build:
+  stage: docker
+  image: docker:24-dind
+  services:
+    - docker:24-dind
+  before_script:
+    - cd $PROJECT_DIR
+    - apk add --no-cache curl jq
+    # Install Trivy
+    - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apk add --allow-untrusted -
+    - wget https://github.com/aquasecurity/trivy/releases/download/v0.48.0/trivy_0.48.0_Linux-64bit.tar.gz
+    - tar zxvf trivy_0.48.0_Linux-64bit.tar.gz
+    - mv trivy /usr/local/bin/
+  script:
+    # Build Docker image
+    - echo "Building Docker image..."
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
+    
+    # Scan image with Trivy
+    - echo "Scanning image for vulnerabilities..."
+    - trivy image --severity HIGH,CRITICAL --exit-code 0 --format json --output trivy-report.json $IMAGE_NAME:$IMAGE_TAG
+    
+    # Check vulnerabilities
+    - |
+      HIGH_VULN=$(cat trivy-report.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length')
+      CRITICAL_VULN=$(cat trivy-report.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length')
+      
+      echo "Found $CRITICAL_VULN CRITICAL and $HIGH_VULN HIGH vulnerabilities"
+      
+      if [ "$CRITICAL_VULN" -gt 0 ] || [ "$HIGH_VULN" -gt 0 ]; then
+        trivy image --severity HIGH,CRITICAL $IMAGE_NAME:$IMAGE_TAG
+        echo "⚠️ Image has HIGH or CRITICAL vulnerabilities. Blocking push."
+        exit 1
+      else
+        echo "✅ No HIGH or CRITICAL vulnerabilities found. Safe to push."
+      fi
+    
+    # Login and push to registry (only if no vulnerabilities)
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+    - docker tag $IMAGE_NAME:$IMAGE_TAG $CI_REGISTRY/$CI_PROJECT_PATH/$IMAGE_NAME:$IMAGE_TAG
+    - docker tag $IMAGE_NAME:$IMAGE_TAG $CI_REGISTRY/$CI_PROJECT_PATH/$IMAGE_NAME:latest
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH/$IMAGE_NAME:$IMAGE_TAG
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH/$IMAGE_NAME:latest
+    - echo "✅ Image pushed successfully"
+  artifacts:
+    reports:
+      container_scanning: $PROJECT_DIR/trivy-report.json
+    paths:
+      - $PROJECT_DIR/trivy-report.json
+    expire_in: 1 week
+  only:
+    - main
+
+# Deploy stage
+deploy-staging:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache bash openssh-client rsync
+  script:
+    - cd Task4
+    - chmod +x deploy.sh
+    - ./deploy.sh
+    - echo "✅ Deployment completed successfully"
+  environment:
+    name: staging
+    url: http://staging.example.com
+  only:
+    - main
+  when: manual  # Require manual approval for deployment

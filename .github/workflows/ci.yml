@@ -1,0 +1,198 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  IMAGE_NAME: my-ecommerce-app
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Debug - Show directory structure
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Repository contents:"
+          ls -la
+          echo "Task4 contents:"
+          ls -la Task4/ || echo "Task4 not found"
+          echo "Django-Ecommerce contents:"
+          ls -la Task4/Django-Ecommercee/ || echo "Django-Ecommerce not found"
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          cd Task4/Django-Ecommercee
+          echo "Current location: $(pwd)"
+          echo "Files here:"
+          ls -la 
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Build application
+        run: |
+          cd Task4/Django-Ecommercee
+          python manage.py collectstatic --noinput --clear || echo "No static files to collect"
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          cd Task4/Django-Ecommercee
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-django
+      
+      - name: Run unit tests
+        run: |
+          cd Task4/Django-Ecommercee
+          
+          if [ -d "tests" ] || find . -name "test_*.py" -o -name "*_test.py" | grep -q .; then
+            pytest -v
+          else
+            echo "No tests found, skipping test execution"
+          fi
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          cd Task4/Django-Ecommercee          
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Install security scanning tools
+        run: |
+          pip install bandit safety
+      
+      - name: Run Bandit (SAST)
+        run: |
+          cd Task4/Django-Ecommercee
+          bandit -r . -f json -o bandit-report.json || true
+          bandit -r . || true
+      
+      - name: Run Safety check
+        run: |
+          cd Task4/Django-Ecommercee
+          safety check --json || true
+          safety check || echo "Some vulnerabilities found but continuing..."
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: security-scan
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build Docker image
+        id: build
+        run: |
+          cd Task4/Django-Ecommercee
+          docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
+          echo "digest=$(docker images --digests ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} --format '{{.Digest}}')" >> $GITHUB_OUTPUT
+      
+      - name: Install Trivy
+        run: |
+          sudo apt-get install -y wget
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+      
+      - name: Scan Docker image with Trivy
+        id: scan
+        run: |
+          echo "Scanning image for vulnerabilities..."
+          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json --output trivy-report.json ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          
+          # Check if there are any HIGH or CRITICAL vulnerabilities
+          HIGH_VULN=$(cat trivy-report.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length')
+          CRITICAL_VULN=$(cat trivy-report.json | jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length')
+          
+          echo "Found $CRITICAL_VULN CRITICAL and $HIGH_VULN HIGH vulnerabilities"
+          
+          if [ "$CRITICAL_VULN" -gt 0 ] || [ "$HIGH_VULN" -gt 0 ]; then
+            echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
+            trivy image --severity HIGH,CRITICAL ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            echo "Image has HIGH or CRITICAL vulnerabilities. Blocking push."
+            exit 1
+          else
+            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+            echo "No HIGH or CRITICAL vulnerabilities found. Safe to push."
+          fi
+      
+      - name: Login to GitHub Container Registry
+        if: steps.scan.outputs.has_vulnerabilities == 'false'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+      
+      - name: Tag and Push Docker image
+        if: steps.scan.outputs.has_vulnerabilities == 'false'
+        run: |
+          FULL_IMAGE=ghcr.io/${{ secrets.GHCR_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          LATEST_IMAGE=ghcr.io/${{ secrets.GHCR_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          
+          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} $FULL_IMAGE
+          docker tag ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} $LATEST_IMAGE
+          
+          docker push $FULL_IMAGE
+          docker push $LATEST_IMAGE
+          
+          echo "Image pushed successfully: $FULL_IMAGE"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/main' && needs.docker.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy to staging
+        run: |
+          cd Task4
+          echo "Deploying application to staging server..."
+          chmod +x deploy.sh
+          ./deploy.sh
+          echo "Deployment completed successfully"
