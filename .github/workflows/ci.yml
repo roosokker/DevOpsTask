@@ -36,6 +36,8 @@ jobs:
       - name: Install dependencies
         env:
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          STRIPE_PUBLIC_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           echo "Current location: $(pwd)"
@@ -47,6 +49,8 @@ jobs:
       - name: Build application
         env:
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          STRIPE_PUBLIC_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           python manage.py collectstatic --noinput --clear || echo "No static files to collect"
@@ -66,6 +70,8 @@ jobs:
       - name: Install dependencies
         env:
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          STRIPE_PUBLIC_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           python -m pip install --upgrade pip
@@ -75,6 +81,8 @@ jobs:
       - name: Run unit tests
         env:
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          STRIPE_PUBLIC_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           
@@ -99,6 +107,8 @@ jobs:
       - name: Install dependencies
         env:
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          STRIPE_PUBLIC_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce          
           python -m pip install --upgrade pip
@@ -111,6 +121,8 @@ jobs:
       - name: Run Bandit (SAST)
         env:
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          STRIPE_PUBLIC_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           bandit -r . -f json -o bandit-report.json || true
@@ -119,6 +131,8 @@ jobs:
       - name: Run Safety check
         env:
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          STRIPE_PUBLIC_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           cd Task4/Django-Ecommerce
           safety check --json || true
@@ -149,6 +163,8 @@ jobs:
           cd Task4/Django-Ecommerce
           docker run --rm \
             -e DJANGO_SECRET_KEY="${{ secrets.DJANGO_SECRET_KEY }}" \
+            -e STRIPE_PUBLIC_KEY="${{ secrets.STRIPE_PUBLIC_KEY }}" \
+            -e STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
             -e ENVIRONMENT="testing" \
             ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} python manage.py check --deploy || echo "Django check completed"
       
@@ -215,6 +231,8 @@ jobs:
       - name: Deploy to staging
         env:
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          STRIPE_PUBLIC_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           cd Task4
           echo "Deploying application to staging server..."
